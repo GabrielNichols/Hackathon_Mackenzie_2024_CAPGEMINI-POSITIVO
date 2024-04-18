@@ -1,14 +1,10 @@
-from datetime import date
 import cv2
 import sqlite3
 from PIL import Image, ImageTk
 import numpy as np
 import tkinter as tk
 from tkinter import messagebox
-import uuid
-import deepface
 import os
-import random
 
 # Inicializar a webcam
 cap = cv2.VideoCapture(0)
