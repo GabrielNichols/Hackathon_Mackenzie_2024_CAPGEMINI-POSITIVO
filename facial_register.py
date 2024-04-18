@@ -16,16 +16,13 @@ cap = cv2.VideoCapture(0)
 # Carregar o classificador pré-treinado para detecção de faces
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-
+# Conectar ao banco de dados
 conn = sqlite3.connect('Registros.db')
+c = conn.cursor()
 
-# # Conectar ao banco de dados
-# conn = sqlite3.connect('faces.db')
-# c = conn.cursor()
-
-# # Criar a tabela se ela não existir
-# c.execute('''CREATE TABLE IF NOT EXISTS faces
-#              (id INTEGER PRIMARY KEY, encoding TEXT, nome TEXT, sobrenome TEXT, data_nascimento TEXT)''')
+# Criar a tabela se ela não existir
+c.execute('''CREATE TABLE IF NOT EXISTS Registros
+             (id INTEGER PRIMARY KEY, nome TEXT, sobrenome TEXT, data_nascimento DATE, foto_path TEXT)''')
 
 foto_tirada = False
 def register_face():
@@ -85,7 +82,10 @@ def register_face():
 
         # Salvar a imagem em uma pasta
         id_usuario = generate_id()
-        path = f"faces/{id_usuario}.jpg"
+        folder = "faces"
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+        path = f"{folder}/{id_usuario}.jpg"
         cv2.imwrite(path, frame)
 
         # Converter a imagem para o formato de imagem suportado pelo Tkinter
@@ -110,6 +110,8 @@ def register_face():
         conn.close()
 
         messagebox.showinfo("Sucesso", "Face registrada com sucesso!")
+
+        window.after(3500, fechar)
     else:
         messagebox.showwarning("Erro", "Nenhuma face detectada ou mais de uma face detectada.")
 
