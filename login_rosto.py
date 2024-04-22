@@ -11,7 +11,6 @@ folder = 'faces'
 # Carregar o classificador pré-treinado para detecção de faces
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-
 def register_face():
     global foto_tirada  # Define a variável como global para que ela seja a mesma fora da função
 
@@ -27,14 +26,18 @@ def register_face():
     # Ler o frame da webcam
     ret, frame = cap.read()
 
-    # Salvar temporariamente o frame como imagem
-    cv2.imwrite('temp.jpg', frame)
+    # Salva a imagem temporária na pasta faces
+    cv2.imwrite('faces/temp.jpg', frame)
 
     # Comparar o rosto detectado na webcam com as imagens da pasta
     for file in os.listdir(folder):
-        if file.endswith('.jpg'):
+        if file.endswith('.jpg')and not file == 'temp.jpg':
             path = os.path.join(folder, file)
-            result = DeepFace.verify('temp.jpg', path)
+
+            img1 = path
+            img2 = 'faces/temp.jpg'
+
+            result = DeepFace.verify(img1, img2, model_name="VGG-Face")
 
             # Se o rosto na webcam for reconhecido, exibir uma mensagem
             if result['verified']:
@@ -44,10 +47,9 @@ def register_face():
         messagebox.showwarning("Aviso", "Rosto não reconhecido.")
 
     # Excluir a imagem temporária
-    os.remove('temp.jpg')
+    os.remove('faces/temp.jpg')
 
     foto_tirada = False
-
 
 def update_frame():
     # Ler o frame da webcam
