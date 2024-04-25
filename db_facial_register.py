@@ -177,6 +177,16 @@ def registrar_usuario():
 
                 return True
 
+            # Consultar o banco de dados para verificar se já existe um registro com os mesmos dados
+            # Conectar ao banco de dados
+            conn = sqlite3.connect('Registros.db')
+            c = conn.cursor()
+            c.execute("SELECT * FROM Registros WHERE nome=? AND sobrenome=? AND data_nascimento=?", (nome, sobrenome, data_nascimento))
+            existing_record = c.fetchone()
+            if existing_record:
+                messagebox.showerror("Erro", "Já existe um registro com esses dados.")
+                return
+
             # Uso da função na validação da data de nascimento
             if not validar_data(data_nascimento):
                 return
@@ -237,12 +247,16 @@ def registrar_usuario():
     entry_nome = CTkEntry(janelacadastro)
     entry_nome.pack()
     entry_nome.insert(tk.END, "Exemplo: João")
+    entry_nome.bind("<FocusIn>", lambda event: entry_nome.delete(0, tk.END) if entry_nome.get() == "Exemplo: João" else None)
+    entry_nome.bind("<FocusOut>", lambda event: entry_nome.insert(tk.END, "Exemplo: João") if entry_nome.get() == "" else None)
 
     label_sobrenome = CTkLabel(janelacadastro, text="Sobrenome:")
     label_sobrenome.pack()
     entry_sobrenome = CTkEntry(janelacadastro)
     entry_sobrenome.pack()
     entry_sobrenome.insert(tk.END, "Exemplo: Silva")
+    entry_sobrenome.bind("<FocusIn>", lambda event: entry_sobrenome.delete(0, tk.END) if entry_sobrenome.get() == "Exemplo: Silva" else None)
+    entry_sobrenome.bind("<FocusOut>", lambda event: entry_sobrenome.insert(tk.END, "Exemplo: Silva") if entry_sobrenome.get() == "" else None)
 
     label_data = CTkLabel(janelacadastro, text="Data de Nascimento:")
     label_data.pack()
