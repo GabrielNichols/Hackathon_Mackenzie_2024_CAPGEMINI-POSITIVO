@@ -8,6 +8,8 @@ import os
 from customtkinter import *
 import tkinter.ttk as ttk
 import pandas as pd
+from tkcalendar import DateEntry
+import re
 
 # Conectar ao banco de dados
 conn = sqlite3.connect('Registros.db')
@@ -154,6 +156,31 @@ def registrar_usuario():
             sobrenome = entry_sobrenome.get()
             data_nascimento = entry_data.get()
 
+            # Adicionar validações
+            if not nome.isalpha():
+                messagebox.showerror("Erro", "O campo 'Nome' deve conter apenas letras.")
+                return
+
+            if not sobrenome.isalpha():
+                messagebox.showerror("Erro", "O campo 'Sobrenome' deve conter apenas letras.")
+                return
+
+            # Função para validar a data de nascimento
+            def validar_data(data_nascimento):
+                # Expressão regular para o formato DD/MM/AAAA
+                regex_data = r'^\d{2}/\d{2}/\d{4}$'
+
+                # Verificar se a data corresponde ao formato esperado
+                if not re.match(regex_data, data_nascimento):
+                    messagebox.showerror("Erro", "O campo 'Data de Nascimento' deve estar no formato DD/MM/AAAA.")
+                    return False
+
+                return True
+
+            # Uso da função na validação da data de nascimento
+            if not validar_data(data_nascimento):
+                return
+
             # Salvar a imagem em uma pasta
             id_usuario = gerar_id()
             folder = "faces"
@@ -209,15 +236,17 @@ def registrar_usuario():
     label_nome.pack()
     entry_nome = CTkEntry(janelacadastro)
     entry_nome.pack()
+    entry_nome.insert(tk.END, "Exemplo: João")
 
     label_sobrenome = CTkLabel(janelacadastro, text="Sobrenome:")
     label_sobrenome.pack()
     entry_sobrenome = CTkEntry(janelacadastro)
     entry_sobrenome.pack()
+    entry_sobrenome.insert(tk.END, "Exemplo: Silva")
 
     label_data = CTkLabel(janelacadastro, text="Data de Nascimento:")
     label_data.pack()
-    entry_data = CTkEntry(janelacadastro)
+    entry_data = DateEntry(janelacadastro, date_pattern='dd/mm/yyyy')
     entry_data.pack()
 
     # Botão para registrar a face
