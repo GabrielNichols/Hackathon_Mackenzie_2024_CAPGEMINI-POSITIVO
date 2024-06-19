@@ -1,196 +1,158 @@
-from deepface import DeepFace
 import cv2
+import deepface.DeepFace
+import mediapipe as mp
+import numpy as np
 import os
 import tkinter as tk
 from customtkinter import *
-from tkinter import messagebox
 from PIL import Image, ImageTk
-import cv2
-import dlib
-from scipy.spatial import distance as dist
+import threading
 
 # Caminho para a pasta com as imagens cadastradas
 folder = 'faces'
 
-# Carregar o classificador pré-treinado para detecção de faces
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-
-# Carregar o detector de pontos faciais pré-treinado
-predictor_path = 'shape_predictor_68_face_landmarks.dat'
-detector = dlib.get_frontal_face_detector()
-predictor = dlib.shape_predictor(predictor_path)
-
-# Função para calcular a razão de abertura dos olhos
-def eye_aspect_ratio(eye):
-    # Calcular as distâncias euclidianas entre os pontos verticais dos olhos
-    A = dist.euclidean(eye[1], eye[5])
-    B = dist.euclidean(eye[2], eye[4])
-
-    # Calcular as distâncias euclidianas entre os pontos horizontais dos olhos
-    C = dist.euclidean(eye[0], eye[3])
-
-    # Calcular a razão de abertura dos olhos
-    ear = (A + B) / (2.0 * C)
-
-    return ear
-
-# Definir os limites da razão de abertura dos olhos
-EYE_AR_THRESH = 0.3
-EYE_AR_CONSEC_FRAMES = 3
-
-# Inicializar o contador de frames consecutivos com os olhos fechados
-COUNTER = 0
-
-# Inicializar o detector de faces
-detector = dlib.get_frontal_face_detector()
-
-# Inicializar o preditor facial
-predictor = dlib.shape_predictor(predictor_path)
+# Configuração do MediaPipe
+mp_face_mesh = mp.solutions.face_mesh
 
 # Inicializar a captura de vídeo
 cap = cv2.VideoCapture(0)
 
-def verificar_piscada():
-    global COUNTER
+# Parâmetros para a detecção de piscadas
+EAR_THRESHOLD = 0.2
+EAR_CONSEC_FRAMES = 3
 
-    # Definir a quantidade de frames para verificar a piscada
-    frames_piscada = 3
+def calculate_eye_aspect_ratio(landmarks, eye_indices):
+    eye_points = np.array([landmarks[i] for i in eye_indices])
+    vertical = np.linalg.norm(eye_points[1] - eye_points[5]) + np.linalg.norm(eye_points[2] - eye_points[4])
+    horizontal = np.linalg.norm(eye_points[0] - eye_points[3])
+    ear = vertical / (2.0 * horizontal)
+    return ear
 
-    while True:
-        # Ler o frame da webcam
-        ret, frame = cap.read()
+right_eye_indices = [33, 160, 158, 133, 153, 144]
+left_eye_indices = [362, 385, 387, 263, 373, 380]
 
-        # Redimensionar o frame para melhorar o desempenho
-        frame = cv2.resize(frame, (480, 360))
+def verificar_piscada(callback):
+    update_message("Por favor, pisque agora.")
+    with mp_face_mesh.FaceMesh(
+        max_num_faces=1,
+        refine_landmarks=True,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5) as face_mesh:
+        frame_count = 0
+        blink_count = 0
 
-        # Converter o frame para escala de cinza
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        while frame_count < 100:
+            success, frame = cap.read()
+            if not success:
+                continue
 
-        # Detectar as faces no frame
-        rects = detector(gray, 0)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = face_mesh.process(frame_rgb)
 
-        for rect in rects:
-            shape = predictor(gray, rect)
-            shape = [(shape.part(i).x, shape.part(i).y) for i in range(68)]
+            if results.multi_face_landmarks:
+                for landmarks in results.multi_face_landmarks:
+                    landmark_list = [(lm.x * frame.shape[1], lm.y * frame.shape[0]) for lm in landmarks.landmark]
+                    right_ear = calculate_eye_aspect_ratio(landmark_list, right_eye_indices)
+                    left_ear = calculate_eye_aspect_ratio(landmark_list, left_eye_indices)
 
-            # Calcular a razão de abertura dos olhos
-            left_eye = shape[42:48]
-            right_eye = shape[36:42]
-            left_ear = eye_aspect_ratio(left_eye)
-            right_ear = eye_aspect_ratio(right_eye)
+                    if (right_ear + left_ear) / 2 < EAR_THRESHOLD:
+                        blink_count += 1
+                    else:
+                        blink_count = 0
 
-            # Calcular a média das razões de abertura dos olhos
-            ear = (left_ear + right_ear) / 2.0
+                    if blink_count >= EAR_CONSEC_FRAMES:
+                        callback(True)
+                        return
+            frame_count += 1
 
-            # Se a razão de abertura dos olhos for menor que o limite, incrementar o contador
-            if ear < EYE_AR_THRESH:
-                COUNTER += 1
-
-                # Se o contador atingir o número de frames consecutivos necessários, retornar True
-                if COUNTER >= frames_piscada:
-                    # Reiniciar o contador para a próxima verificação
-                    COUNTER = 0
-                    return True
-
-            # Caso contrário, reiniciar o contador
-            else:
-                COUNTER = 0
-
-        # Checar se a tecla 'q' foi pressionada para sair do loop
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    return False
-
+        callback(False)
 
 def register_face():
-    global foto_tirada  # Define a variável como global para que ela seja a mesma fora da função
+    global foto_tirada
 
-    if any(file.endswith('.jpg') for file in os.listdir('faces')):
+    if any(file.endswith('.jpg') for file in os.listdir(folder)):
         foto_tirada = True
     else:
         foto_tirada = False
 
     if not foto_tirada:
-        messagebox.showwarning("Aviso", "Por favor, registre a face antes de verificar.")
+        update_message("Por favor, registre a face antes de verificar.")
         return
 
-    # Exibir a mensagem para o usuário piscar
-    messagebox.showinfo("Aviso", "Por favor, pisque para verificar.")
+    def on_blink_detected(piscou):
+        if piscou:
+            face_recognized = False
+            while not face_recognized:
+                ret, frame = cap.read()
+                cv2.imwrite('faces/temp.jpg', frame)
+                img1 = 'faces/temp.jpg'
+                for file in os.listdir(folder):
+                    if file.endswith('.jpg') and not file == 'temp.jpg':
+                        img2 = os.path.join(folder, file)
+                        try:
+                            result = deepface.DeepFace.verify(img1_path=img1, img2_path=img2)
+                            if result['verified']:
+                                update_message(f"Rosto reconhecido como {file}")
+                                show_border_green()
+                                face_recognized = True
+                                break
+                        except Exception as e:
+                            print("Erro ao verificar faces:", e)
+                if not face_recognized:
+                    update_message("Rosto não reconhecido.")
+                    show_border_red()
+                    break
+            os.remove('faces/temp.jpg')
+            foto_tirada = False
+        else:
+            update_message("Não foi possível detectar a piscada.")
 
-    # Aguardar até que a piscada seja detectada
-    while True:
-        if verificar_piscada():
-            break
+    threading.Thread(target=verificar_piscada, args=(on_blink_detected,)).start()
 
-    # Ler o frame da webcam
-    ret, frame = cap.read()
+def show_border_green():
+    border_label_green.place(relx=0.5, rely=0, anchor='n')
+    window.after(4000, border_label_green.place_forget)  # Hide the border after 4 seconds
 
-    # Salva a imagem temporária na pasta faces
-    cv2.imwrite('faces/temp.jpg', frame)
-
-    # Comparar o rosto detectado na webcam com as imagens da pasta
-    for file in os.listdir(folder):
-        if file.endswith('.jpg') and not file == 'temp.jpg':
-            path = os.path.join(folder, file)
-
-            img1 = path
-            img2 = 'faces/temp.jpg'
-
-            result = DeepFace.verify(img1, img2, model_name="VGG-Face")
-
-            # Se o rosto na webcam for reconhecido, exibir uma mensagem
-            if result['verified']:
-                messagebox.showinfo("Sucesso", f"Rosto reconhecido como {file}")
-                break
-    else:
-        messagebox.showwarning("Aviso", "Rosto não reconhecido.")
-
-    # Excluir a imagem temporária
-    os.remove('faces/temp.jpg')
-
-    foto_tirada = False
+def show_border_red():
+    border_label_red.place(relx=0.5, rely=0, anchor='n')
+    window.after(4000, border_label_red.place_forget)  # Hide the border after 4 seconds
 
 def update_frame():
-    # Ler o frame da webcam
     ret, frame = cap.read()
-
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    # Detectar as faces no frame
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-
-    # Desenhar retângulos ao redor das faces detectadas
-    for (x, y, w, h) in faces:
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-    # Exibir o frame na label_cam
-    img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    img = Image.fromarray(img)
-    img = ImageTk.PhotoImage(image=img)
-    label_cam.img = img
-    label_cam.configure(image=img)
+    if ret:
+        img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        img_tk = ImageTk.PhotoImage(image=img)
+        label_cam.imgtk = img_tk
+        label_cam.configure(image=img_tk)
     window.after(10, update_frame)
+
+def update_message(message):
+    label_info.configure(text=message)
+    window.after(4000, lambda: label_info.configure(text=""))
 
 def fechar():
     cap.release()
     cv2.destroyAllWindows()
     window.destroy()
-    quit()
 
 window = CTk()
 window.title("Login de Usuários")
 window.geometry("600x600")
 
-# Inicializar a webcam após a criação da janela principal do Tkinter
-cap = cv2.VideoCapture(0)
-label_cam = tk.Label(window)
+label_cam = CTkLabel(window, text="", bg_color="transparent")
 label_cam.pack()
+
+label_info = CTkLabel(window, text="", font=("Helvetica", 16), bg_color="transparent")
+label_info.place(relx=0.5, rely=0.1, anchor="center")
+
+border_label_green = CTkLabel(window, text='', height=10, bg_color="#00FF00", width=window.winfo_screenwidth())
+border_label_red = CTkLabel(window, text='', height=10, bg_color="#FF0000", width=window.winfo_screenwidth())
+
 update_frame()
 
-# Botão para verificar a face
 button_verificar = CTkButton(window, text="Verificar Face", command=register_face)
 button_verificar.pack()
 
-# Botão para fechar o programa
 button_fechar = CTkButton(window, text="Fechar", command=fechar)
 button_fechar.pack()
 
